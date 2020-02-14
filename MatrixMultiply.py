@@ -7,7 +7,7 @@ import time
 # Controls threads per block and shared memory usage.
 # The computation will be done on blocks of TPBxTPB elements.
 TPB = 32
-TPM = 256
+TPM = 128
 Dup = 5
 @cuda.jit
 def fast_matmul(A, B, C):

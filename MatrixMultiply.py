@@ -3,29 +3,21 @@ from numba import cuda, float32
 import numpy
 import math
 import time
-
-# Controls threads per block and shared memory usage.
-# The computation will be done on blocks of TPBxTPB elements.
+import sys
 TPB = 32
-TPM = 128
-Dup = 5
 @cuda.jit
 def fast_matmul(A, B, C):
-    """
-    Perform matrix multiplication of C = A * B
-    Each thread computes one element of the result matrix C
-    """
-
     # Define an array in the shared memory
     # The size and type of the arrays must be known at compile time
     sA = cuda.shared.array(shape=(TPB, TPB), dtype=float32)
     sB = cuda.shared.array(shape=(TPB, TPB), dtype=float32)
 
     x, y = cuda.grid(2)
-    
+
     tx = cuda.threadIdx.x
     ty = cuda.threadIdx.y
-    
+    bpg = cuda.gridDim.x    # blocks per grid
+
     if x >= C.shape[0] and y >= C.shape[1]:
         # Quit if (x, y) is outside of valid C boundary
         return
@@ -33,7 +25,7 @@ def fast_matmul(A, B, C):
     # Each thread computes one element in the result matrix.
     # The dot product is chunked into dot products of TPB-long vectors.
     tmp = 0.
-    for i in range(int(A.shape[1] / TPB)):
+    for i in range(bpg):
         # Preload data into shared memory
         sA[tx, ty] = A[x, ty + i * TPB]
         sB[tx, ty] = B[tx + i * TPB, y]
@@ -49,59 +41,39 @@ def fast_matmul(A, B, C):
         cuda.syncthreads()
 
     C[x, y] = tmp
-start_time = time.time()
-for ii in range(1,Dup):
-    # The data array
-    A = numpy.full((TPB*TPM, TPB*TPM), 3, numpy.float) # [32 x 48] matrix containing all 3's
-    B = numpy.full((TPB*TPM, TPB*TPM), 4, numpy.float) # [48 x 16] matrix containing all 4's
+class MatMulBench:
 
-    A_global_mem = cuda.to_device(A)
-    B_global_mem = cuda.to_device(B)
-    C_global_mem = cuda.device_array((TPB*TPM, TPB*TPM)) # [32 x 16] matrix result
+    #TPB One thread block size
+    #COE TPBxCOE = matrix size(Ract matrix)
+    #DUP will Run DUP times
+    def __init__(self,COE = 128):
+        self.COE = COE
 
-    # Configure the blocks
-    threadsperblock = (TPB, TPB)
-    blockspergrid_x = int(math.ceil(A.shape[0] / threadsperblock[1]))
-    blockspergrid_y = int(math.ceil(B.shape[1] / threadsperblock[0]))
-    blockspergrid = (blockspergrid_x, blockspergrid_y)
+    # Controls threads per block and shared memory usage.
+    # The computation will be done on blocks of TPBxTPB elements.
+    def Run(self) -> float:
+        COE = self.COE
+        start_time = time.time()
+        # The data array
+        A = numpy.full((TPB*COE, TPB*COE), 3, numpy.float) # [32 x 48] matrix containing all 3's
+        B = numpy.full((TPB*COE, TPB*COE), 4, numpy.float) # [48 x 16] matrix containing all 4's
 
-    # Start the kernel 
-    fast_matmul[blockspergrid, threadsperblock](A_global_mem, B_global_mem, C_global_mem)
-    res = C_global_mem.copy_to_host()
+        A_global_mem = cuda.to_device(A)
+        B_global_mem = cuda.to_device(B)
+        C_global_mem = cuda.device_array((TPB*COE, TPB*COE)) # [32 x 16] matrix result
 
-    #print(res)
-print("GPU --- %s seconds ---" % (time.time() - start_time))
+        # Configure the blocks
+        threadsperblock = (TPB, TPB)
+        blockspergrid_x = int(math.ceil(A.shape[0] / threadsperblock[1]))
+        blockspergrid_y = int(math.ceil(B.shape[1] / threadsperblock[0]))
+        blockspergrid = (blockspergrid_x, blockspergrid_y)
 
-
-# The data array
-A = numpy.full((TPB*TPM, TPB*TPM), 3, numpy.float) # [32 x 48] matrix containing all 3's
-B = numpy.full((TPB*TPM, TPB*TPM), 4, numpy.float) # [48 x 16] matrix containing all 4's
-
-A_global_mem = cuda.to_device(A)
-B_global_mem = cuda.to_device(B)
-C_global_mem = cuda.device_array((TPB*TPM, TPB*TPM)) # [32 x 16] matrix result
-# Configure the blocks
-threadsperblock = (TPB, TPB)
-blockspergrid_x = int(math.ceil(A.shape[0] / threadsperblock[1]))
-blockspergrid_y = int(math.ceil(B.shape[1] / threadsperblock[0]))
-blockspergrid = (blockspergrid_x, blockspergrid_y)
-start_time = time.time()
-for ii in range(1,Dup):
-
-
-    # Start the kernel 
-    fast_matmul[blockspergrid, threadsperblock](A_global_mem, B_global_mem, C_global_mem)
-    #res = C_global_mem.copy_to_host()
-
-    #print(res)
-print("GPU without PCIE transfer--- %s seconds ---" % (time.time() - start_time))
-
-start_time = time.time()
-for ii in range(1,Dup):
-    # The data array
-    A = numpy.full((TPB*TPM, TPB*TPM), 3, numpy.float) # [32 x 48] matrix containing all 3's
-    B = numpy.full((TPB*TPM, TPB*TPM), 4, numpy.float) # [48 x 16] matrix containing all 4's
-
-    numpy.matmul(A,B)
-
-print("CPU --- %s seconds ---" % (time.time() - start_time))
+        # Start the kernel 
+        fast_matmul[blockspergrid, threadsperblock](A_global_mem, B_global_mem, C_global_mem)
+        res = C_global_mem.copy_to_host()
+        return time.time() - start_time
+            #print(res)
+if __name__ == "__main__":
+    # execute only if run as a script
+    MatBench = MatMulBench()
+    print(MatBench.Run())

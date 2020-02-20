@@ -76,7 +76,3 @@ class MatMulBench:
         res = C_global_mem.copy_to_host()
         return time.time() - start_time
 
-if __name__ == "__main__":
-    # execute only if run as a script
-    MatBench = MatMulBench()
-    print(MatBench.Run())

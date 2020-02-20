@@ -1,9 +1,10 @@
-from __future__ import division
-from numba import cuda, float32
+# System imports
 import numpy
 import math
 import time
-import sys
+from __future__ import division
+from numba import cuda, float32
+
 TPB = 32
 @cuda.jit
 def fast_matmul(A, B, C):
@@ -46,8 +47,10 @@ class MatMulBench:
     #TPB One thread block size
     #COE TPBxCOE = matrix size(Ract matrix)
     #DUP will Run DUP times
-    def __init__(self,COE = 128):
-        self.COE = COE
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            if key == 'COEnumber': self.COE = value
+
 
     # Controls threads per block and shared memory usage.
     # The computation will be done on blocks of TPBxTPB elements.
@@ -68,11 +71,11 @@ class MatMulBench:
         blockspergrid_y = int(math.ceil(B.shape[1] / threadsperblock[0]))
         blockspergrid = (blockspergrid_x, blockspergrid_y)
 
-        # Start the kernel 
+        # Start the kernel
         fast_matmul[blockspergrid, threadsperblock](A_global_mem, B_global_mem, C_global_mem)
         res = C_global_mem.copy_to_host()
         return time.time() - start_time
-            #print(res)
+
 if __name__ == "__main__":
     # execute only if run as a script
     MatBench = MatMulBench()

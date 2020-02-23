@@ -19,3 +19,9 @@ Whether to print out the elapse time or not, print out when with '-t True', othe
        MatrixMultiply -C 128 -t True                      
 
         
+sample result for benchmark_visualize.py
+
+
+ <p align="center">
+  <img width="600" height="400" src="/benchResult.png">
+</p>

@@ -2,3 +2,4 @@ numba
 matplotlib
 pudb
 tensorflow-gpu
+tensorflow
